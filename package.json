@@ -1,6 +1,6 @@
 {
   "name": "cyber-amber-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for AI agents — query hot/trending news articles, top stories, and topic-filtered trends from Cyber Amber",
   "type": "module",
   "main": "dist/index.js",
