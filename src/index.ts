@@ -97,7 +97,7 @@ server.tool(
     topic: z.string().describe("Topic keyword or phrase to search for"),
     period: z.enum(["day", "3days", "week"]).default("3days").describe("Time period: day, 3days, or week"),
     count: z.number().min(1).max(40).default(10).describe("Number of articles to return"),
-    threshold: z.number().optional().describe("Minimum hotness score threshold"),
+    threshold: z.number().optional().describe("Minimum hotness score. Scores are normalized so ~100 = a typical top story of the period, and thresholds are comparable across day/3days/week. Anchors (measured across all topics): ~10 filters out low-signal noise (p75), ~25 = moderately notable (p90), ~40 = notable (p95), ~80 = clearly hot (p99), ~100+ = top stories, ~150+ = rare standouts (observed max typically 130–170). Omit for no floor; raise it when you only want the highest-impact stories on the topic."),
   },
   async ({ topic, period, count, threshold }) => {
     const body: Record<string, unknown> = { query: topic, period, count };
