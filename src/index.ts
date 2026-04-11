@@ -121,13 +121,18 @@ server.tool(
 
 server.tool(
   "search_articles",
-  "Search for articles by keyword. Returns articles matching the query, ranked by relevance.",
+  "Search for articles by keyword. Returns articles matching the query, ranked by relevance. Optionally restrict results to a time range.",
   {
     query: z.string().describe("Search query"),
     count: z.number().min(1).max(40).default(10).describe("Number of articles to return"),
+    time_from: z.string().optional().describe("Optional lower bound on publish_date (ISO 8601 or any parseable date)"),
+    time_to: z.string().optional().describe("Optional upper bound on publish_date (ISO 8601 or any parseable date)"),
   },
-  async ({ query, count }) => {
-    const result = await apiPost<ArticlesResult>("/search", { query, count });
+  async ({ query, count, time_from, time_to }) => {
+    const body: Record<string, unknown> = { query, count };
+    if (time_from !== undefined) body.time_from = time_from;
+    if (time_to !== undefined) body.time_to = time_to;
+    const result = await apiPost<ArticlesResult>("/search", body);
     return {
       content: [{ type: "text", text: formatArticles(result.points) }],
     };
