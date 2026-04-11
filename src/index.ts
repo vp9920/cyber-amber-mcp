@@ -77,23 +77,13 @@ server.tool(
 
 server.tool(
   "get_hot_articles",
-  "Get hot/trending articles for a time period. Returns articles ranked by hotness score.",
+  "Get hot/trending articles for a time period. Returns articles ranked directly by hotness score — no topic or location filter.",
   {
     period: z.enum(["day", "3days", "week"]).default("3days").describe("Time period: day, 3days, or week"),
     count: z.number().min(1).max(40).default(20).describe("Number of articles to return"),
-    threshold: z.number().optional().describe("Minimum hotness score threshold"),
   },
-  async ({ period, count, threshold }) => {
-    const mode = period === "day" ? "hot_today" : period === "3days" ? "hot_last_3days" : "hot_this_week";
-    const body: Record<string, unknown> = {
-      x: 0, y: 0,
-      time_from: new Date(Date.now() - (period === "day" ? 1 : period === "3days" ? 3 : 7) * 86400000).toISOString(),
-      time_to: new Date().toISOString(),
-      count,
-      mode,
-    };
-    if (threshold !== undefined) body.threshold = threshold;
-    const result = await apiPost<ArticlesResult>("/geo_point", body);
+  async ({ period, count }) => {
+    const result = await apiPost<ArticlesResult>("/hot", { period, count });
     return {
       content: [{ type: "text", text: formatArticles(result.points) }],
     };
