@@ -20,12 +20,6 @@ interface ArticlesResult {
   points: ArticlePoint[];
 }
 
-interface MetaItem {
-  id: number;
-  title: string;
-  score: number;
-}
-
 async function apiPost<T>(path: string, body: object): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
@@ -58,7 +52,7 @@ function formatArticles(articles: ArticlePoint[]): string {
 
 const server = new McpServer({
   name: "cyber-amber",
-  version: "1.0.0",
+  version: "1.1.0",
 });
 
 server.tool(
