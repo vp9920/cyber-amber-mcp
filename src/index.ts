@@ -30,17 +30,6 @@ async function apiPost<T>(path: string, body: object): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const url = new URL(`${API_URL}${path}`);
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      url.searchParams.set(k, v);
-    }
-  }
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
-  return res.json() as Promise<T>;
-}
 
 function formatArticles(articles: ArticlePoint[]): string {
   if (articles.length === 0) return "No articles found.";
@@ -52,22 +41,8 @@ function formatArticles(articles: ArticlePoint[]): string {
 
 const server = new McpServer({
   name: "cyber-amber",
-  version: "1.1.0",
+  version: "1.2.0",
 });
-
-server.tool(
-  "get_briefing",
-  "Get today's top stories — one article per major topic, covering the most important news from the last 2 days",
-  {
-    count: z.number().min(1).max(40).default(20).describe("Number of top stories to return"),
-  },
-  async ({ count }) => {
-    const result = await apiGet<ArticlesResult>("/briefing", { count: count.toString() });
-    return {
-      content: [{ type: "text", text: formatArticles(result.points) }],
-    };
-  }
-);
 
 server.tool(
   "get_hot_articles",
