@@ -20,6 +20,27 @@ interface ArticlesResult {
   points: ArticlePoint[];
 }
 
+interface TrendAtom {
+  word_id: number;
+  word_text: string;
+  code_context: number;
+  x: number;
+  y: number;
+  article_count: number;
+  growth_week: number;
+  growth_month: number;
+  growth_year: number;
+  spec: number;
+  rarity: number;
+  label_score: number;
+  hint_words: string[];
+  daily_counts: number[];
+}
+
+interface TrendsResult {
+  atoms: TrendAtom[];
+}
+
 async function apiPost<T>(path: string, body: object): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
@@ -30,6 +51,16 @@ async function apiPost<T>(path: string, body: object): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function apiGet<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {
+  const qs = Object.entries(params)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+  const url = `${API_URL}${path}${qs ? `?${qs}` : ""}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
 
 function formatArticles(articles: ArticlePoint[]): string {
   if (articles.length === 0) return "No articles found.";
@@ -39,14 +70,40 @@ function formatArticles(articles: ArticlePoint[]): string {
   }).join("\n\n");
 }
 
+function formatTrends(atoms: TrendAtom[], period: "week" | "month" | "year"): string {
+  if (atoms.length === 0) return "No trending keywords found.";
+  const growthKey: keyof TrendAtom = period === "week" ? "growth_week" : period === "month" ? "growth_month" : "growth_year";
+  return atoms.map((a, i) => {
+    const growth = a[growthKey] as number;
+    const sign = growth >= 0 ? "+" : "";
+    const hints = a.hint_words && a.hint_words.length > 0 ? ` | hints: ${a.hint_words.slice(0, 5).join(", ")}` : "";
+    return `${i + 1}. ${a.word_text} — ${sign}${(growth * 100).toFixed(0)}% ${period}, ${a.article_count} articles${hints}\n   word_id=${a.word_id} code=${a.code_context}`;
+  }).join("\n\n");
+}
+
 const server = new McpServer({
   name: "cyber-amber",
-  version: "1.2.0",
+  version: "1.3.0",
 });
 
 server.tool(
+  "get_briefing",
+  "Get top stories for a period, with one article per topic. Runs greedy pick-and-cover across hot articles so the list covers distinct stories (not duplicates of the same story across sources). Best default for 'what are the top stories right now?'.",
+  {
+    days: z.enum(["1", "3", "7"]).default("3").describe("Time window: 1, 3, or 7 days"),
+    count: z.number().min(1).max(40).default(20).describe("Number of stories to return"),
+  },
+  async ({ days, count }) => {
+    const result = await apiGet<ArticlesResult>("/briefing", { days, count });
+    return {
+      content: [{ type: "text", text: formatArticles(result.points) }],
+    };
+  }
+);
+
+server.tool(
   "get_hot_articles",
-  "Get hot/trending articles for a time period. Returns articles ranked directly by hotness score — no topic or location filter.",
+  "Get articles ranked purely by hotness score for a time period. May include multiple articles about the same story (from different sources) — use get_briefing if you want one article per topic.",
   {
     period: z.enum(["day", "3days", "week"]).default("3days").describe("Time period: day, 3days, or week"),
     count: z.number().min(1).max(40).default(20).describe("Number of articles to return"),
@@ -92,6 +149,51 @@ server.tool(
     if (time_from !== undefined) body.time_from = time_from;
     if (time_to !== undefined) body.time_to = time_to;
     const result = await apiPost<ArticlesResult>("/search", body);
+    return {
+      content: [{ type: "text", text: formatArticles(result.points) }],
+    };
+  }
+);
+
+server.tool(
+  "get_trending_keywords",
+  "Get keywords whose usage is rising or declining over a period. Each result includes a word_id + code_context that can be passed to get_keyword_articles to fetch articles for that keyword's specific topical sense. Use this to discover what's newly on the agenda (rising) or fading (declining).",
+  {
+    period: z.enum(["week", "month", "year"]).default("week").describe("Growth window: week, month, or year"),
+    direction: z.enum(["rising", "declining"]).default("rising").describe("rising = fastest-growing, declining = fastest-fading"),
+    limit: z.number().min(1).max(200).default(30).describe("Number of keywords to return"),
+  },
+  async ({ period, direction, limit }) => {
+    const result = await apiGet<TrendsResult>("/trends", { period, direction, limit });
+    return {
+      content: [{ type: "text", text: formatTrends(result.atoms, period) }],
+    };
+  }
+);
+
+server.tool(
+  "get_keyword_articles",
+  "Get articles for a specific keyword-in-context, as returned by get_trending_keywords. word_id identifies the keyword, code identifies its topical sense (encoder code). Window defaults to the matching period; pass time_from/time_to to override.",
+  {
+    word_id: z.number().int().nonnegative().describe("Keyword ID from get_trending_keywords"),
+    code: z.number().int().nonnegative().describe("Encoder code_context from get_trending_keywords"),
+    period: z.enum(["week", "month", "year"]).default("week").describe("Default window for time_from if not supplied: last week/month/year"),
+    count: z.number().min(1).max(100).default(20).describe("Number of articles to return"),
+    time_from: z.string().optional().describe("Optional lower bound on publish_date (ISO 8601). Overrides `period`."),
+    time_to: z.string().optional().describe("Optional upper bound on publish_date (ISO 8601). Defaults to now."),
+  },
+  async ({ word_id, code, period, count, time_from, time_to }) => {
+    const now = new Date();
+    const periodDays = period === "week" ? 7 : period === "month" ? 30 : 365;
+    const defaultFrom = new Date(now.getTime() - periodDays * 24 * 3600 * 1000);
+    const body = {
+      word_id,
+      code,
+      time_from: time_from ?? defaultFrom.toISOString(),
+      time_to: time_to ?? now.toISOString(),
+      count,
+    };
+    const result = await apiPost<ArticlesResult>("/trend_articles", body);
     return {
       content: [{ type: "text", text: formatArticles(result.points) }],
     };
