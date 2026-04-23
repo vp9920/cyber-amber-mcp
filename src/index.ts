@@ -62,11 +62,27 @@ async function apiGet<T>(path: string, params: Record<string, string | number | 
   return res.json() as Promise<T>;
 }
 
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
+function upperFirstPerWord(s: string): string {
+  return s.split(" ").map(w => w.length === 0 ? w : w[0].toUpperCase() + w.slice(1)).join(" ");
+}
+
 function formatArticles(articles: ArticlePoint[]): string {
   if (articles.length === 0) return "No articles found.";
   return articles.map((a, i) => {
     const score = a.score > 0 ? ` [hotness: ${a.score.toFixed(1)}]` : "";
-    return `${i + 1}. ${a.title}\n   Source: ${a.source} | ${a.publish_date}${score}\n   ${a.url}`;
+    return `${i + 1}. ${decodeHtmlEntities(a.title)}\n   Source: ${a.source} | ${a.publish_date}${score}\n   ${a.url}`;
   }).join("\n\n");
 }
 
@@ -76,8 +92,10 @@ function formatTrends(atoms: TrendAtom[], period: "week" | "month" | "year"): st
   return atoms.map((a, i) => {
     const growth = a[growthKey] as number;
     const sign = growth >= 0 ? "+" : "";
-    const hints = a.hint_words && a.hint_words.length > 0 ? ` | hints: ${a.hint_words.slice(0, 5).join(", ")}` : "";
-    return `${i + 1}. ${a.word_text} — ${sign}${(growth * 100).toFixed(0)}% ${period}, ${a.article_count} articles${hints}\n   word_id=${a.word_id} code=${a.code_context}`;
+    const hints = a.hint_words && a.hint_words.length > 0
+      ? ` | hints: ${a.hint_words.slice(0, 5).map(upperFirstPerWord).join(", ")}`
+      : "";
+    return `${i + 1}. ${upperFirstPerWord(a.word_text)} — ${sign}${(growth * 100).toFixed(0)}% ${period}, ${a.article_count} articles${hints}\n   word_id=${a.word_id} code=${a.code_context}`;
   }).join("\n\n");
 }
 
