@@ -101,7 +101,7 @@ function formatTrends(atoms: TrendAtom[], period: "week" | "month" | "year"): st
 
 const server = new McpServer({
   name: "cyber-amber",
-  version: "1.3.0",
+  version: "1.3.2",
 });
 
 server.tool(
